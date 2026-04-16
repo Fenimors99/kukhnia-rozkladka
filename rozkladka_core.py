@@ -116,12 +116,12 @@ th, td { border: 0.4pt solid #000; padding: 1px 1px; text-align: center;
 td.c-name { text-align: left; font-size: 8pt; padding-left: 3px; }
 th.v-hdr {
     height: 42mm; padding: 1px; overflow: hidden;
-    writing-mode: vertical-rl; transform: rotate(180deg);
+    writing-mode: vertical-rl;
     font-size: 5pt; line-height: 1; white-space: normal;
 }
 th.ing-main-hdr { font-size: 6pt; font-weight: bold; padding: 2px; }
 td.meal-cell {
-    writing-mode: vertical-rl; transform: rotate(180deg);
+    writing-mode: vertical-rl;
     text-align: center; font-weight: bold; font-size: 7pt;
     background: #e0e0e0; padding: 2px 1px;
 }
