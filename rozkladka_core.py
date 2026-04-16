@@ -114,18 +114,16 @@ table { border-collapse: collapse; width: 100%; table-layout: fixed; }
 th, td { border: 0.4pt solid #000; padding: 1px 1px; text-align: center;
          vertical-align: middle; line-height: 1.2; font-size: 6pt; }
 td.c-name { text-align: left; font-size: 8pt; padding-left: 3px; }
-th.v-hdr { height: 42mm; padding: 0; overflow: visible; }
-th.v-hdr span {
-    display: inline-block;
-    transform: rotate(-90deg);
-    transform-origin: center center;
-    white-space: nowrap; font-size: 5pt; line-height: 1;
+th.v-hdr {
+    height: 42mm; padding: 1px; overflow: hidden;
+    writing-mode: vertical-rl; transform: rotate(180deg);
+    font-size: 5pt; line-height: 1; white-space: normal;
 }
 th.ing-main-hdr { font-size: 6pt; font-weight: bold; padding: 2px; }
 td.meal-cell {
-    transform: rotate(-90deg);
+    writing-mode: vertical-rl; transform: rotate(180deg);
     text-align: center; font-weight: bold; font-size: 7pt;
-    background: #e0e0e0; padding: 2px 1px; white-space: nowrap;
+    background: #e0e0e0; padding: 2px 1px;
 }
 tr.total td { background: #e8e8e8; font-weight: bold; }
 @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
@@ -274,15 +272,15 @@ def generate_daily(xlsx_path: str, out_path: str, unit: str, start_date_str: str
         L += ['<col style="width:11mm">', '<col style="width:11mm">', '</colgroup>']
 
         L += ['<thead><tr>',
-              '<th class="v-hdr" rowspan="2"><span>Прийняття їжі</span></th>',
-              '<th class="v-hdr" rowspan="2"><span>Найменування страв</span></th>',
-              '<th class="v-hdr" rowspan="2"><span>% страви за типом</span></th>',
+              '<th class="v-hdr" rowspan="2">Прийняття їжі</th>',
+              '<th class="v-hdr" rowspan="2">Найменування страв</th>',
+              '<th class="v-hdr" rowspan="2">% страви за типом</th>',
               f'<th class="ing-main-hdr" colspan="{len(used_idx)}">Найменування продуктів та маса їх в грамах на одну особу</th>',
-              '<th class="v-hdr" rowspan="2"><span>Загальна маса готової страви, г</span></th>',
-              "<th class=\"v-hdr\" rowspan=\"2\"><span>Маса м'ясних та рибних порцій, г</span></th>",
+              '<th class="v-hdr" rowspan="2">Загальна маса готової страви, г</th>',
+              "<th class=\"v-hdr\" rowspan=\"2\">Маса м'ясних та рибних порцій, г</th>",
               '</tr><tr>']
         for i in used_idx:
-            L.append(f'<th class="v-hdr"><span>{ING_NAMES[i]}</span></th>')
+            L.append(f'<th class="v-hdr">{ING_NAMES[i]}</th>')
         L.append('</tr></thead><tbody>')
 
         for meal, dishes in meal_groups:
