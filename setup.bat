@@ -2,17 +2,16 @@
 chcp 65001 >nul
 echo.
 echo ============================================
-echo  Встановлення залежностей для Генератора
+echo  Vstanovlennya zalezhnostei dlya Generatora
 echo ============================================
 echo.
 
-:: ── 1. Перевірка Python ───────────────────────────────────────────────────────
 python --version >nul 2>&1
 if errorlevel 1 (
-    echo [!] Python не знайдено.
+    echo [!] Python ne znaideno.
     echo.
-    echo     Встановіть Python з https://python.org/downloads/
-    echo     На першому екрані обов'язково поставте галочку:
+    echo     Vstanovit Python z https://python.org/downloads/
+    echo     Na pershomu ekrani obovyazkovo postavte galochku:
     echo       "Add Python to PATH"
     echo.
     pause
@@ -23,17 +22,15 @@ for /f "tokens=*" %%v in ('python --version 2^>^&1') do set PYVER=%%v
 echo [OK] %PYVER%
 echo.
 
-:: ── 2. GTK (потрібен для WeasyPrint / PDF) ────────────────────────────────────
-echo [*] Перевірка GTK...
-
+echo [*] Perevirka WeasyPrint...
 python -c "from weasyprint import HTML" >nul 2>&1
 if not errorlevel 1 (
-    echo [OK] WeasyPrint + GTK вже встановлені, пропускаємо.
+    echo [OK] WeasyPrint + GTK vzhe vstanovleni, propuskaemo.
     goto :pip
 )
 
-echo [*] Завантаження GTK Runtime з GitHub...
-echo     Це може зайняти хвилину...
+echo [*] Zavantazhennya GTK Runtime z GitHub...
+echo     Tse mozhe zainyaty khvylinu...
 echo.
 
 powershell -NoProfile -ExecutionPolicy Bypass -Command ^
@@ -41,22 +38,22 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
     "try {" ^
     "  $rel = Invoke-RestMethod 'https://api.github.com/repos/tschoonj/GTK-for-Windows-Runtime-Environment-Installer/releases/latest';" ^
     "  $asset = $rel.assets | Where-Object { $_.name -like '*installer.exe' } | Select-Object -First 1;" ^
-    "  if (-not $asset) { throw 'Не знайдено інсталятор GTK' }" ^
+    "  if (-not $asset) { throw 'GTK installer not found' }" ^
     "  Write-Host ('  -> ' + $asset.name);" ^
     "  Invoke-WebRequest $asset.browser_download_url -OutFile 'gtk_setup.exe' -UseBasicParsing;" ^
-    "  Write-Host '  -> Запускаємо інсталятор (тихий режим)...';" ^
+    "  Write-Host '  -> Running installer (silent)...';" ^
     "  Start-Process 'gtk_setup.exe' -ArgumentList '/S' -Wait;" ^
     "  Remove-Item 'gtk_setup.exe';" ^
-    "  Write-Host '  -> GTK встановлено.'" ^
-    "} catch { Write-Host ('ПОМИЛКА: ' + $_.Exception.Message); exit 1 }"
+    "  Write-Host '  -> GTK installed.'" ^
+    "} catch { Write-Host ('ERROR: ' + $_.Exception.Message); exit 1 }"
 
 if errorlevel 1 (
     echo.
-    echo [!] Не вдалося встановити GTK автоматично.
-    echo     Завантажте вручну:
+    echo [!] Ne vdalosia vstanovyty GTK avtomatychno.
+    echo     Zavantazhte vruchnu:
     echo     https://github.com/tschoonj/GTK-for-Windows-Runtime-Environment-Installer/releases
-    echo     Файл: gtk3-runtime-*-installer.exe
-    echo     Після встановлення запустіть setup.bat знову.
+    echo     Fail: gtk3-runtime-*-installer.exe
+    echo     Pislia vstanovlennya zapustit setup.bat znovu.
     echo.
     pause
     exit /b 1
@@ -64,21 +61,20 @@ if errorlevel 1 (
 
 echo.
 
-:: ── 3. Python-пакети ──────────────────────────────────────────────────────────
 :pip
-echo [*] Встановлення Python-пакетів...
+echo [*] Vstanovlennya Python-paketiv...
 pip install --upgrade openpyxl num2words weasyprint
 if errorlevel 1 (
     echo.
-    echo [!] Помилка під час pip install.
-    echo     Перевірте підключення до інтернету і спробуйте ще раз.
+    echo [!] Pomylka pid chas pip install.
+    echo     Perevirte pidklyuchennya do internetu i sprobuite shche raz.
     pause
     exit /b 1
 )
 
 echo.
 echo ============================================
-echo  Готово! Запускайте програму через run.bat
+echo  Gotovo! Zapuskajte programu cherez run.bat
 echo ============================================
 echo.
 pause
