@@ -114,17 +114,9 @@ table { border-collapse: collapse; width: 100%; table-layout: fixed; }
 th, td { border: 0.4pt solid #000; padding: 1px 1px; text-align: center;
          vertical-align: middle; line-height: 1.2; font-size: 6pt; }
 td.c-name { text-align: left; font-size: 8pt; padding-left: 3px; }
-th.v-hdr {
-    height: 42mm; padding: 1px; overflow: hidden;
-    writing-mode: vertical-rl;
-    font-size: 5pt; line-height: 1; white-space: normal;
-}
+th.v-hdr { height: 42mm; padding: 0; overflow: hidden; }
 th.ing-main-hdr { font-size: 6pt; font-weight: bold; padding: 2px; }
-td.meal-cell {
-    writing-mode: vertical-rl;
-    text-align: center; font-weight: bold; font-size: 7pt;
-    background: #e0e0e0; padding: 2px 1px;
-}
+td.meal-cell { background: #e0e0e0; padding: 0; }
 tr.total td { background: #e8e8e8; font-weight: bold; }
 @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
 """
@@ -163,6 +155,22 @@ tr:nth-child(even) td.name { background: #fafafa; }
 tr.param:nth-child(even) td { background: #f0f0f0; }
 @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
 """
+
+
+# ── SVG vertical text helper ─────────────────────────────────────────────────
+
+def _svg_vtext(text, h_mm=42, fontsize=5):
+    """Return SVG element with text rotated bottom-to-top, fills parent width."""
+    t = text.replace('&', '&amp;').replace('<', '&lt;')
+    h = h_mm
+    return (
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="{h}mm" '
+        f'viewBox="0 0 10 {h}" preserveAspectRatio="xMidYMid meet">'
+        f'<text x="5" y="{h/2}" transform="rotate(-90 5 {h/2})" '
+        f'text-anchor="middle" dominant-baseline="middle" '
+        f'font-size="{fontsize}" font-family="Arial,sans-serif">{t}</text>'
+        f'</svg>'
+    )
 
 
 # ── Daily PDF generation ──────────────────────────────────────────────────────
@@ -272,22 +280,23 @@ def generate_daily(xlsx_path: str, out_path: str, unit: str, start_date_str: str
         L += ['<col style="width:11mm">', '<col style="width:11mm">', '</colgroup>']
 
         L += ['<thead><tr>',
-              '<th class="v-hdr" rowspan="2">Прийняття їжі</th>',
-              '<th class="v-hdr" rowspan="2">Найменування страв</th>',
-              '<th class="v-hdr" rowspan="2">% страви за типом</th>',
+              f'<th class="v-hdr" rowspan="2">{_svg_vtext("Прийняття їжі")}</th>',
+              f'<th class="v-hdr" rowspan="2">{_svg_vtext("Найменування страв")}</th>',
+              f'<th class="v-hdr" rowspan="2">{_svg_vtext("% страви за типом")}</th>',
               f'<th class="ing-main-hdr" colspan="{len(used_idx)}">Найменування продуктів та маса їх в грамах на одну особу</th>',
-              '<th class="v-hdr" rowspan="2">Загальна маса готової страви, г</th>',
-              "<th class=\"v-hdr\" rowspan=\"2\">Маса м'ясних та рибних порцій, г</th>",
+              f'<th class="v-hdr" rowspan="2">{_svg_vtext("Загальна маса готової страви, г")}</th>',
+              f'<th class="v-hdr" rowspan="2">{_svg_vtext("Маса м\'ясних та рибних порцій, г")}</th>',
               '</tr><tr>']
         for i in used_idx:
-            L.append(f'<th class="v-hdr">{ING_NAMES[i]}</th>')
+            L.append(f'<th class="v-hdr">{_svg_vtext(ING_NAMES[i])}</th>')
         L.append('</tr></thead><tbody>')
 
         for meal, dishes in meal_groups:
             for idx, r in enumerate(dishes):
                 L.append('<tr>')
                 if idx == 0:
-                    L.append(f'<td class="meal-cell" rowspan="{len(dishes)}">{meal}</td>')
+                    meal_h = max(10, len(dishes) * 5)
+                    L.append(f'<td class="meal-cell" rowspan="{len(dishes)}">{_svg_vtext(meal, h_mm=meal_h, fontsize=7)}</td>')
                 L.append(f'<td class="c-name">{r["dish"]}</td>')
                 L.append(f'<td>{r["pct"]}</td>')
                 for i in used_idx:
