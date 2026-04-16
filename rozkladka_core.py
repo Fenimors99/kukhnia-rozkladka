@@ -21,10 +21,12 @@ def fmt(v):
     if v is None or v == '':
         return ''
     if isinstance(v, float):
+        if v == 0.0:
+            return '0'
         s = f'{v:.3f}'.rstrip('0').rstrip('.')
         return s.replace('.', ',')
     if isinstance(v, int):
-        return str(v) if v != 0 else ''
+        return str(v)
     return str(v).strip()
 
 
