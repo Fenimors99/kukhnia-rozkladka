@@ -17,7 +17,13 @@
 
 На сторінці репозиторію натиснути **Code → Download ZIP** і розпакувати в зручне місце (наприклад `C:\Кухня`).
 
-### 3. Встановити залежності
+### 3. Встановити GTK (потрібен для PDF)
+
+WeasyPrint вимагає системні бібліотеки GTK. Завантажити інсталятор:  
+**https://github.com/tschoonj/GTK-for-Windows-Runtime-Environment-Installer/releases**  
+(файл `gtk3-runtime-*-installer.exe`) і запустити.
+
+### 4. Встановити залежності
 
 Відкрити командний рядок (`Win + R` → ввести `cmd` → Enter) і виконати:
 
@@ -25,9 +31,11 @@
 pip install openpyxl num2words weasyprint
 ```
 
-### 4. Запустити
+### 5. Запустити
 
 Двічі клікнути на файл **`run.bat`** у папці програми.
+
+> ⚠️ GTK потрібно встановити **до** `pip install weasyprint`, інакше PDF не генеруватиметься.
 
 ---
 
