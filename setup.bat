@@ -37,7 +37,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
     "$ErrorActionPreference='Stop';" ^
     "try {" ^
     "  $rel = Invoke-RestMethod 'https://api.github.com/repos/tschoonj/GTK-for-Windows-Runtime-Environment-Installer/releases/latest';" ^
-    "  $asset = $rel.assets | Where-Object { $_.name -like '*installer.exe' } | Select-Object -First 1;" ^
+    "  $asset = $rel.assets | Where-Object { $_.name -like '*.exe' } | Select-Object -First 1;" ^
     "  if (-not $asset) { throw 'GTK installer not found' }" ^
     "  Write-Host ('  -> ' + $asset.name);" ^
     "  Invoke-WebRequest $asset.browser_download_url -OutFile 'gtk_setup.exe' -UseBasicParsing;" ^
@@ -52,7 +52,7 @@ if errorlevel 1 (
     echo [!] Ne vdalosia vstanovyty GTK avtomatychno.
     echo     Zavantazhte vruchnu:
     echo     https://github.com/tschoonj/GTK-for-Windows-Runtime-Environment-Installer/releases
-    echo     Fail: gtk3-runtime-*-installer.exe
+    echo     Fail: gtk3-runtime-*-win64.exe
     echo     Pislia vstanovlennya zapustit setup.bat znovu.
     echo.
     pause
