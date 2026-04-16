@@ -42,15 +42,29 @@
 
 На сторінці репозиторію натиснути **Code → Download ZIP** і розпакувати (наприклад в `~/Desktop/Кухня`).
 
-### 3. Встановити залежності
+### 3. Встановити системні бібліотеки (потрібні для PDF)
 
-Відкрити термінал і виконати:
+WeasyPrint вимагає Pango і Cairo. Встановлюються через Homebrew.
+
+Якщо Homebrew ще не встановлений:
+
+```bash
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+```
+
+Потім встановити бібліотеки:
+
+```bash
+brew install pango
+```
+
+### 4. Встановити Python-залежності
 
 ```bash
 pip3 install openpyxl num2words weasyprint
 ```
 
-### 4. Запустити
+### 5. Запустити
 
 ```bash
 cd ~/Desktop/Кухня
