@@ -159,17 +159,46 @@ tr.param:nth-child(even) td { background: #f0f0f0; }
 
 # ── SVG vertical text helper ─────────────────────────────────────────────────
 
-def _svg_vtext(text, h_mm=42, fontsize_pt=5):
-    """Return SVG element with text rotated bottom-to-top, fills parent width."""
-    t = text.replace('&', '&amp;').replace('<', '&lt;')
+def _svg_vtext(text, h_mm=42, fontsize_pt=5, bold=True):
+    """Return SVG element with text rotated bottom-to-top, fills parent width.
+    Long text is word-wrapped into multiple lines spread across the cell width."""
     h = h_mm
-    fs = round(fontsize_pt * 0.3528, 2)  # pt → mm, matches viewBox units
+    fs = round(fontsize_pt * 0.3528, 2)   # pt → mm (viewBox units)
+    lh = round(fs * 1.35, 2)              # line height
+    fw = 'bold' if bold else 'normal'
+
+    # Estimate max chars per line based on available height
+    max_chars = max(8, int(h_mm / max(0.1, fs * 0.55)))
+
+    # Word-wrap
+    words = text.split()
+    lines, cur = [], ''
+    for w in words:
+        test = (cur + ' ' + w).strip()
+        if cur and len(test) > max_chars:
+            lines.append(cur)
+            cur = w
+        else:
+            cur = test
+    if cur:
+        lines.append(cur)
+
+    n = len(lines)
+    parts = []
+    for i, line in enumerate(lines):
+        xi = round(5 + (i - (n - 1) / 2) * lh, 3)
+        t = line.replace('&', '&amp;').replace('<', '&lt;')
+        parts.append(
+            f'<text x="{xi}" y="{h/2}" transform="rotate(-90 {xi} {h/2})" '
+            f'text-anchor="middle" dominant-baseline="middle" '
+            f'font-size="{fs}" font-family="Arial,sans-serif" font-weight="{fw}">'
+            f'{t}</text>'
+        )
+
     return (
         f'<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="{h}mm" '
         f'viewBox="0 0 10 {h}" preserveAspectRatio="xMidYMid meet">'
-        f'<text x="5" y="{h/2}" transform="rotate(-90 5 {h/2})" '
-        f'text-anchor="middle" dominant-baseline="middle" '
-        f'font-size="{fs}" font-family="Arial,sans-serif">{t}</text>'
+        + ''.join(parts) +
         f'</svg>'
     )
 
