@@ -10,6 +10,11 @@ from itertools import groupby
 
 import openpyxl
 from num2words import num2words
+from weasyprint import HTML as _WP_HTML
+
+
+def _html_to_pdf(html: str, out_path: Path):
+    _WP_HTML(string=html).write_pdf(str(out_path))
 
 
 DAYS_ORDER = ['Понеділок', 'Вівторок', 'Середа', 'Четвер', "П'ятниця", 'Субота', 'Неділя']
@@ -125,15 +130,6 @@ tr.total td { background: #e8e8e8; font-weight: bold; }
 @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
 """
 
-_JS_AUTOFONT = """<script>
-document.querySelectorAll('td:not(.c-name):not(.meal-cell)').forEach(function(td) {
-    var size = 6;
-    while (td.scrollWidth > td.offsetWidth + 1 && size > 3.5) {
-        size -= 0.5; td.style.fontSize = size + 'pt';
-    }
-});
-</script>"""
-
 _CSS_PERIOD = """
 @page { size: A3 landscape; margin: 4mm; }
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -170,20 +166,21 @@ tr.param:nth-child(even) td { background: #f0f0f0; }
 """
 
 
-# ── Daily HTML generation ─────────────────────────────────────────────────────
+# ── Daily PDF generation ──────────────────────────────────────────────────────
 
-def generate_daily(xlsx_path: str, out_dir: str, unit: str, start_date_str: str,
+def generate_daily(xlsx_path: str, out_path: str, unit: str, start_date_str: str,
                    progress_cb=None):
     """
-    Generate 7 daily HTML files + combined file from xlsx.
+    Generate combined A3-landscape PDF (7 days, one page each) from xlsx.
+    out_path: full path to output .pdf file.
     progress_cb: callable(str) for log output, or None.
     """
     def log(msg):
         if progress_cb:
             progress_cb(msg)
 
-    out_dir = Path(out_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = Path(out_path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
 
     wb = openpyxl.load_workbook(str(xlsx_path), data_only=True)
     ws = wb['Аркуш1']
@@ -308,7 +305,7 @@ def generate_daily(xlsx_path: str, out_dir: str, unit: str, start_date_str: str,
 
         L.append('</tbody></table>')
         if not inner_only:
-            L += [_JS_AUTOFONT, '</body></html>']
+            L.append('</body></html>')
         return '\n'.join(L)
 
     for day in DAYS_ORDER:
@@ -316,12 +313,8 @@ def generate_daily(xlsx_path: str, out_dir: str, unit: str, start_date_str: str,
         if not rows:
             log(f'⚠️  {day}: немає рядків')
             continue
-        html = _build_day(day, rows)
-        safe = day.lower().replace("'", '')
-        fname = out_dir / f'rozkladka_{safe}.html'
-        fname.write_text(html, encoding='utf-8')
         used = len([i for i in range(N_ING) if any(r['ings'][i] for r in rows if r['meal'] != '__total__')])
-        log(f'✅  {day} ({DAYS_DATES[day]}): {len(rows)-1} страв, {used} інгр. → {fname.name}')
+        log(f'  {day} ({DAYS_DATES[day]}): {len(rows)-1} страв, {used} інгр.')
 
     css_combined = _CSS_DAILY + '\n.day-wrap{break-after:page;page-break-after:always}.day-wrap:last-child{break-after:avoid;page-break-after:avoid}'
     combined = [
@@ -335,11 +328,11 @@ def generate_daily(xlsx_path: str, out_dir: str, unit: str, start_date_str: str,
         if not days[day]:
             continue
         combined += ['<div class="day-wrap">', _build_day(day, days[day], inner_only=True), '</div>']
-    combined += [_JS_AUTOFONT, '</body></html>']
+    combined.append('</body></html>')
 
-    combined_path = out_dir / 'rozkladka_all.html'
-    combined_path.write_text('\n'.join(combined), encoding='utf-8')
-    log(f'✅  Зведений файл → {combined_path.name}')
+    log('Конвертую в PDF…')
+    _html_to_pdf('\n'.join(combined), out_path)
+    log(f'✅  Збережено: {out_path.name}')
 
 
 # ── Period summary HTML generation ───────────────────────────────────────────
@@ -480,7 +473,8 @@ def generate_period(xlsx_path: str, out_path: str, unit: str, start_date_str: st
         '</body></html>',
     ]
 
-    out_path.write_text('\n'.join(L), encoding='utf-8')
+    log('Конвертую в PDF…')
+    _html_to_pdf('\n'.join(L), out_path)
     log(f'✅  Збережено: {out_path.name}')
 
 

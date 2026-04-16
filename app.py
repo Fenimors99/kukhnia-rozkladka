@@ -94,13 +94,13 @@ class DailyTab(_BaseTab):
         self.columnconfigure(1, weight=1)
         self.rowconfigure(5, weight=1)
 
-        self._xlsx    = tk.StringVar()
-        self._out_dir = tk.StringVar()
-        self._unit    = tk.StringVar(value='Т0920')
-        self._date    = tk.StringVar()
+        self._xlsx     = tk.StringVar()
+        self._out_file = tk.StringVar()
+        self._unit     = tk.StringVar(value='Т0920')
+        self._date     = tk.StringVar()
 
         self._row(self, 0, 'XLSX файл:', self._xlsx, 'Вибрати…', self._pick_xlsx)
-        self._row(self, 1, 'Вихідна папка:', self._out_dir, 'Вибрати…', self._pick_outdir)
+        self._row(self, 1, 'Зберегти PDF як:', self._out_file, 'Зберегти…', self._pick_outfile)
 
         ttk.Label(self, text='Підрозділ:', font=_FONT).grid(row=2, column=0, sticky='e', **_PAD)
         ttk.Entry(self, textvariable=self._unit, width=20, font=_FONT).grid(
@@ -112,7 +112,7 @@ class DailyTab(_BaseTab):
         ttk.Entry(df, textvariable=self._date, width=14, font=_FONT).pack(side='left')
         ttk.Label(df, text='ДД.ММ.РРРР', font=_FONT_SMALL, foreground='gray').pack(side='left', padx=6)
 
-        self._btn = ttk.Button(self, text='Згенерувати', command=self._run)
+        self._btn = ttk.Button(self, text='Згенерувати PDF', command=self._run)
         self._btn.grid(row=4, column=0, columnspan=3, pady=8)
 
         self._log_txt = self._make_log(self, 5)
@@ -124,24 +124,32 @@ class DailyTab(_BaseTab):
         if p:
             self._xlsx.set(p)
             self._autofill_date(self._xlsx, self._date)
-            if not self._out_dir.get():
-                self._out_dir.set(str(Path(p).parent / 'output'))
+            if not self._out_file.get():
+                date = self._date.get() or 'rozkladka'
+                stem = f'rozkladka_{date.replace(".", "-")}'
+                self._out_file.set(str(Path(p).parent / f'{stem}.pdf'))
 
-    def _pick_outdir(self):
-        p = filedialog.askdirectory(title='Вибрати вихідну папку')
+    def _pick_outfile(self):
+        date = self._date.get() or 'rozkladka'
+        stem = f'rozkladka_{date.replace(".", "-")}'
+        p = filedialog.asksaveasfilename(
+            title='Зберегти PDF',
+            defaultextension='.pdf',
+            initialfile=f'{stem}.pdf',
+            filetypes=[('PDF', '*.pdf'), ('Всі файли', '*.*')])
         if p:
-            self._out_dir.set(p)
+            self._out_file.set(p)
 
     def _run(self):
         xlsx = self._xlsx.get().strip()
-        out  = self._out_dir.get().strip()
+        out  = self._out_file.get().strip()
         unit = self._unit.get().strip() or 'Т0920'
         date = self._date.get().strip()
 
         if not xlsx:
             messagebox.showerror('Помилка', 'Вкажіть XLSX файл'); return
         if not out:
-            messagebox.showerror('Помилка', 'Вкажіть вихідну папку'); return
+            messagebox.showerror('Помилка', 'Вкажіть шлях для збереження PDF'); return
         if not date:
             messagebox.showerror('Помилка', 'Вкажіть дату початку тижня (ДД.ММ.РРРР)'); return
 
@@ -152,6 +160,7 @@ class DailyTab(_BaseTab):
             try:
                 generate_daily(xlsx, out, unit, date,
                                progress_cb=lambda m: self._log(self._log_txt, m))
+
                 self._log(self._log_txt, '\nГотово!')
             except Exception as e:
                 self._log(self._log_txt, f'❌ Помилка: {e}')
@@ -175,7 +184,7 @@ class PeriodTab(_BaseTab):
         self._date     = tk.StringVar()
 
         self._row(self, 0, 'XLSX файл:', self._xlsx, 'Вибрати…', self._pick_xlsx)
-        self._row(self, 1, 'Вихідний файл:', self._out_file, 'Зберегти як…', self._pick_outfile)
+        self._row(self, 1, 'Зберегти PDF як:', self._out_file, 'Зберегти…', self._pick_outfile)
 
         ttk.Label(self, text='Підрозділ:', font=_FONT).grid(row=2, column=0, sticky='e', **_PAD)
         ttk.Entry(self, textvariable=self._unit, width=20, font=_FONT).grid(
@@ -187,7 +196,7 @@ class PeriodTab(_BaseTab):
         ttk.Entry(df, textvariable=self._date, width=14, font=_FONT).pack(side='left')
         ttk.Label(df, text='ДД.ММ.РРРР', font=_FONT_SMALL, foreground='gray').pack(side='left', padx=6)
 
-        self._btn = ttk.Button(self, text='Згенерувати', command=self._run)
+        self._btn = ttk.Button(self, text='Згенерувати PDF', command=self._run)
         self._btn.grid(row=4, column=0, columnspan=3, pady=8)
 
         self._log_txt = self._make_log(self, 5)
@@ -200,13 +209,18 @@ class PeriodTab(_BaseTab):
             self._xlsx.set(p)
             self._autofill_date(self._xlsx, self._date)
             if not self._out_file.get():
-                self._out_file.set(str(Path(p).parent / 'rozkladka_period.html'))
+                date = self._date.get() or 'rozkladka'
+                stem = f'rozkladka_period_{date.replace(".", "-")}'
+                self._out_file.set(str(Path(p).parent / f'{stem}.pdf'))
 
     def _pick_outfile(self):
+        date = self._date.get() or 'rozkladka'
+        stem = f'rozkladka_period_{date.replace(".", "-")}'
         p = filedialog.asksaveasfilename(
-            title='Зберегти вихідний файл',
-            defaultextension='.html',
-            filetypes=[('HTML', '*.html'), ('Всі файли', '*.*')])
+            title='Зберегти PDF',
+            defaultextension='.pdf',
+            initialfile=f'{stem}.pdf',
+            filetypes=[('PDF', '*.pdf'), ('Всі файли', '*.*')])
         if p:
             self._out_file.set(p)
 
