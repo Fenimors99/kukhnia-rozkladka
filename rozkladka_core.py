@@ -159,16 +159,17 @@ tr.param:nth-child(even) td { background: #f0f0f0; }
 
 # ── SVG vertical text helper ─────────────────────────────────────────────────
 
-def _svg_vtext(text, h_mm=42, fontsize=5):
+def _svg_vtext(text, h_mm=42, fontsize_pt=5):
     """Return SVG element with text rotated bottom-to-top, fills parent width."""
     t = text.replace('&', '&amp;').replace('<', '&lt;')
     h = h_mm
+    fs = round(fontsize_pt * 0.3528, 2)  # pt → mm, matches viewBox units
     return (
         f'<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="{h}mm" '
         f'viewBox="0 0 10 {h}" preserveAspectRatio="xMidYMid meet">'
         f'<text x="5" y="{h/2}" transform="rotate(-90 5 {h/2})" '
         f'text-anchor="middle" dominant-baseline="middle" '
-        f'font-size="{fontsize}" font-family="Arial,sans-serif">{t}</text>'
+        f'font-size="{fs}" font-family="Arial,sans-serif">{t}</text>'
         f'</svg>'
     )
 
@@ -296,7 +297,7 @@ def generate_daily(xlsx_path: str, out_path: str, unit: str, start_date_str: str
                 L.append('<tr>')
                 if idx == 0:
                     meal_h = max(10, len(dishes) * 5)
-                    L.append(f'<td class="meal-cell" rowspan="{len(dishes)}">{_svg_vtext(meal, h_mm=meal_h, fontsize=7)}</td>')
+                    L.append(f'<td class="meal-cell" rowspan="{len(dishes)}">{_svg_vtext(meal, h_mm=meal_h, fontsize_pt=7)}</td>')
                 L.append(f'<td class="c-name">{r["dish"]}</td>')
                 L.append(f'<td>{r["pct"]}</td>')
                 for i in used_idx:
