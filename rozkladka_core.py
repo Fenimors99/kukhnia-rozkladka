@@ -518,13 +518,12 @@ def generate_period(xlsx_path: str, out_path: str, unit: str, start_date_str: st
 
 # ── Scale invoice ─────────────────────────────────────────────────────────────
 
-def _nakladna_ws_to_pdf(ws, out_path: Path):
-    """Render openpyxl worksheet to PDF via WeasyPrint, preserving merged cells."""
+def _nakladna_ws_to_html(ws) -> str:
+    """Render openpyxl worksheet to HTML string, preserving merged cells."""
     from openpyxl.utils import get_column_letter
 
-    # Build merged-cell maps
-    merged_spans = {}   # (r, c) -> {'rowspan': int, 'colspan': int} for top-left cell
-    covered = set()     # (r, c) cells that are covered by a merge (skip in output)
+    merged_spans = {}
+    covered = set()
     for rng in ws.merged_cells.ranges:
         r1, c1, r2, c2 = rng.min_row, rng.min_col, rng.max_row, rng.max_col
         merged_spans[(r1, c1)] = {'rowspan': r2 - r1 + 1, 'colspan': c2 - c1 + 1}
@@ -533,7 +532,6 @@ def _nakladna_ws_to_pdf(ws, out_path: Path):
                 if r != r1 or c != c1:
                     covered.add((r, c))
 
-    # Column widths as percentages
     col_widths = []
     for c in range(1, ws.max_column + 1):
         cd = ws.column_dimensions.get(get_column_letter(c))
@@ -558,11 +556,9 @@ def _nakladna_ws_to_pdf(ws, out_path: Path):
                 continue
             cell = ws.cell(r, c)
             val  = _fmt(cell.value)
-
-            style_parts = []
             span_info = merged_spans.get((r, c), {})
 
-            # Alignment
+            style_parts = []
             h_align = cell.alignment.horizontal if cell.alignment else None
             if h_align and h_align != 'general':
                 style_parts.append(f'text-align:{h_align}')
@@ -573,7 +569,6 @@ def _nakladna_ws_to_pdf(ws, out_path: Path):
             if v_align:
                 style_parts.append(f'vertical-align:{v_align}')
 
-            # Wrap
             wrap = cell.alignment.wrap_text if cell.alignment else False
             if not wrap:
                 style_parts.append('white-space:nowrap')
@@ -591,7 +586,7 @@ def _nakladna_ws_to_pdf(ws, out_path: Path):
             cells.append(f'<td{attrs}>{bold_open}{val}{bold_close}</td>')
         rows_html.append('<tr>' + ''.join(cells) + '</tr>')
 
-    html = (
+    return (
         '<!DOCTYPE html><html lang="uk"><head><meta charset="utf-8"><style>'
         '@page{size:A4 portrait;margin:8mm 6mm}'
         'body{font-family:Arial,sans-serif;font-size:6.5pt}'
@@ -603,7 +598,6 @@ def _nakladna_ws_to_pdf(ws, out_path: Path):
         + ''.join(rows_html)
         + '</tbody></table></body></html>'
     )
-    _html_to_pdf(html, out_path)
 
 
 def _amount_to_words(total_sum):
@@ -681,12 +675,15 @@ def scale_nakladna(source_path: str, out_dir: str, base_count: int,
         new_stem = re.sub(r'\(\d+ ос\.\)', f'({target_count} ос.)', stem)
         if new_stem == stem:
             new_stem = f'{stem} ({target_count} ос.)'
-        out_file = out_dir / f'{new_stem}.xlsx'
-        wb.save(str(out_file))
-        log(f'✅  [{target_count} ос.] {out_file.name}')
+
+        html = _nakladna_ws_to_html(ws)
+
+        html_file = out_dir / f'{new_stem}.html'
+        html_file.write_text(html, encoding='utf-8')
+        log(f'✅  [{target_count} ос.] {html_file.name}')
         log(f'     Сума: {total_sum:.2f} грн  ({sum_words} грн. {kop:02d} коп.)')
 
         log('   Конвертую в PDF…')
-        pdf_file = out_file.with_suffix('.pdf')
-        _nakladna_ws_to_pdf(ws, pdf_file)
+        pdf_file = out_dir / f'{new_stem}.pdf'
+        _html_to_pdf(html, pdf_file)
         log(f'✅  PDF: {pdf_file.name}')
