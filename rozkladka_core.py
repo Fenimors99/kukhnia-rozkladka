@@ -678,11 +678,7 @@ def scale_nakladna(source_path: str, out_dir: str, base_count: int,
 
         html = _nakladna_ws_to_html(ws)
 
-        html_file = out_dir / f'{new_stem}.html'
-        html_file.write_text(html, encoding='utf-8')
-        log(f'✅  [{target_count} ос.] {html_file.name}')
-        log(f'     Сума: {total_sum:.2f} грн  ({sum_words} грн. {kop:02d} коп.)')
-
+        log(f'   [{target_count} ос.] Сума: {total_sum:.2f} грн  ({sum_words} грн. {kop:02d} коп.)')
         log('   Конвертую в PDF…')
         pdf_file = out_dir / f'{new_stem}.pdf'
         _html_to_pdf(html, pdf_file)
