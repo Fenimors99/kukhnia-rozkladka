@@ -315,7 +315,7 @@ def generate_daily(xlsx_path: str, out_path: str, unit: str, start_date_str: str
               f'<th class="v-hdr" rowspan="2">{_svg_vtext("% страви за типом")}</th>',
               f'<th class="ing-main-hdr" colspan="{len(used_idx)}">Найменування продуктів та маса їх в грамах на одну особу</th>',
               f'<th class="v-hdr" rowspan="2">{_svg_vtext("Загальна маса готової страви, г")}</th>',
-              f'<th class="v-hdr" rowspan="2">{_svg_vtext("Маса м\'ясних та рибних порцій, г")}</th>',
+              '<th class="v-hdr" rowspan="2">' + _svg_vtext("Маса м'ясних та рибних порцій, г") + '</th>',
               '</tr><tr>']
         for i in used_idx:
             L.append(f'<th class="v-hdr">{_svg_vtext(ING_NAMES[i])}</th>')
@@ -518,6 +518,94 @@ def generate_period(xlsx_path: str, out_path: str, unit: str, start_date_str: st
 
 # ── Scale invoice ─────────────────────────────────────────────────────────────
 
+def _nakladna_ws_to_pdf(ws, out_path: Path):
+    """Render openpyxl worksheet to PDF via WeasyPrint, preserving merged cells."""
+    from openpyxl.utils import get_column_letter
+
+    # Build merged-cell maps
+    merged_spans = {}   # (r, c) -> {'rowspan': int, 'colspan': int} for top-left cell
+    covered = set()     # (r, c) cells that are covered by a merge (skip in output)
+    for rng in ws.merged_cells.ranges:
+        r1, c1, r2, c2 = rng.min_row, rng.min_col, rng.max_row, rng.max_col
+        merged_spans[(r1, c1)] = {'rowspan': r2 - r1 + 1, 'colspan': c2 - c1 + 1}
+        for r in range(r1, r2 + 1):
+            for c in range(c1, c2 + 1):
+                if r != r1 or c != c1:
+                    covered.add((r, c))
+
+    # Column widths as percentages
+    col_widths = []
+    for c in range(1, ws.max_column + 1):
+        cd = ws.column_dimensions.get(get_column_letter(c))
+        col_widths.append(cd.width if (cd and cd.width) else 8.0)
+    total_w = sum(col_widths) or 1
+    col_pcts = ''.join(
+        f'<col style="width:{w / total_w * 100:.2f}%">' for w in col_widths
+    )
+
+    def _fmt(val):
+        if val is None:
+            return ''
+        if isinstance(val, float):
+            return f'{val:g}'
+        return str(val)
+
+    rows_html = []
+    for r in range(1, ws.max_row + 1):
+        cells = []
+        for c in range(1, ws.max_column + 1):
+            if (r, c) in covered:
+                continue
+            cell = ws.cell(r, c)
+            val  = _fmt(cell.value)
+
+            style_parts = []
+            span_info = merged_spans.get((r, c), {})
+
+            # Alignment
+            h_align = cell.alignment.horizontal if cell.alignment else None
+            if h_align and h_align != 'general':
+                style_parts.append(f'text-align:{h_align}')
+            elif isinstance(cell.value, (int, float)) and cell.value is not None:
+                style_parts.append('text-align:right')
+
+            v_align = cell.alignment.vertical if cell.alignment else None
+            if v_align:
+                style_parts.append(f'vertical-align:{v_align}')
+
+            # Wrap
+            wrap = cell.alignment.wrap_text if cell.alignment else False
+            if not wrap:
+                style_parts.append('white-space:nowrap')
+
+            style_attr = f' style="{";".join(style_parts)}"' if style_parts else ''
+            bold_open  = '<b>' if (cell.font and cell.font.bold) else ''
+            bold_close = '</b>' if (cell.font and cell.font.bold) else ''
+
+            attrs = style_attr
+            if span_info.get('rowspan', 1) > 1:
+                attrs += f' rowspan="{span_info["rowspan"]}"'
+            if span_info.get('colspan', 1) > 1:
+                attrs += f' colspan="{span_info["colspan"]}"'
+
+            cells.append(f'<td{attrs}>{bold_open}{val}{bold_close}</td>')
+        rows_html.append('<tr>' + ''.join(cells) + '</tr>')
+
+    html = (
+        '<!DOCTYPE html><html lang="uk"><head><meta charset="utf-8"><style>'
+        '@page{size:A4 portrait;margin:8mm 6mm}'
+        'body{font-family:Arial,sans-serif;font-size:6.5pt}'
+        'table{border-collapse:collapse;width:100%;table-layout:fixed}'
+        'td{border:.4pt solid #000;padding:1pt 2pt;overflow:hidden;'
+        'word-wrap:break-word;overflow-wrap:break-word}'
+        '</style></head><body>'
+        f'<table><colgroup>{col_pcts}</colgroup><tbody>'
+        + ''.join(rows_html)
+        + '</tbody></table></body></html>'
+    )
+    _html_to_pdf(html, out_path)
+
+
 def _amount_to_words(total_sum):
     grn = int(total_sum)
     kop = round((total_sum - grn) * 100)
@@ -597,3 +685,8 @@ def scale_nakladna(source_path: str, out_dir: str, base_count: int,
         wb.save(str(out_file))
         log(f'✅  [{target_count} ос.] {out_file.name}')
         log(f'     Сума: {total_sum:.2f} грн  ({sum_words} грн. {kop:02d} коп.)')
+
+        log('   Конвертую в PDF…')
+        pdf_file = out_file.with_suffix('.pdf')
+        _nakladna_ws_to_pdf(ws, pdf_file)
+        log(f'✅  PDF: {pdf_file.name}')
