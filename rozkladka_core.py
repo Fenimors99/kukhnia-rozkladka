@@ -518,6 +518,17 @@ def generate_period(xlsx_path: str, out_path: str, unit: str, start_date_str: st
 
 # ── Scale invoice ─────────────────────────────────────────────────────────────
 
+_BORDER_WIDTH = {
+    'hair': '0.25pt', 'thin': '0.5pt', 'medium': '1pt',
+    'mediumDashed': '1pt', 'thick': '2pt', 'double': '1pt',
+}
+
+
+def _border_css(side):
+    w = _BORDER_WIDTH.get(getattr(side, 'border_style', None))
+    return f'{w} solid #000' if w else None
+
+
 def _nakladna_ws_to_html(ws) -> str:
     """Render openpyxl worksheet to HTML string, preserving merged cells."""
     from openpyxl.utils import get_column_letter
@@ -573,6 +584,13 @@ def _nakladna_ws_to_html(ws) -> str:
             if not wrap:
                 style_parts.append('white-space:nowrap')
 
+            b = cell.border
+            for prop, side in (('border-top', b.top), ('border-bottom', b.bottom),
+                                ('border-left', b.left), ('border-right', b.right)):
+                css = _border_css(side)
+                if css:
+                    style_parts.append(f'{prop}:{css}')
+
             style_attr = f' style="{";".join(style_parts)}"' if style_parts else ''
             bold_open  = '<b>' if (cell.font and cell.font.bold) else ''
             bold_close = '</b>' if (cell.font and cell.font.bold) else ''
@@ -591,7 +609,7 @@ def _nakladna_ws_to_html(ws) -> str:
         '@page{size:A4 portrait;margin:8mm 6mm}'
         'body{font-family:Arial,sans-serif;font-size:6.5pt}'
         'table{border-collapse:collapse;width:100%;table-layout:fixed}'
-        'td{border:.4pt solid #000;padding:1pt 2pt;overflow:hidden;'
+        'td{padding:1pt 2pt;overflow:hidden;'
         'word-wrap:break-word;overflow-wrap:break-word}'
         '</style></head><body>'
         f'<table><colgroup>{col_pcts}</colgroup><tbody>'
