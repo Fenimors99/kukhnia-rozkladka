@@ -32,7 +32,6 @@ class App(tk.Tk):
         nb.pack(fill='both', expand=True, padx=8, pady=8)
 
         nb.add(DailyTab(nb),  text='  По днях  ')
-        nb.add(PeriodTab(nb), text='  Зведена  ')
         nb.add(ScaleTab(nb),  text='  Накладна  ')
 
 
@@ -161,67 +160,11 @@ class DailyTab(_BaseTab):
                 generate_daily(xlsx, out, unit, date,
                                progress_cb=lambda m: self._log(self._log_txt, m))
 
-                self._log(self._log_txt, '\nГотово!')
-            except Exception as e:
-                self._log(self._log_txt, f'❌ Помилка: {e}')
-            finally:
-                self.after(0, lambda: self._btn.configure(state='normal'))
-
-        threading.Thread(target=_task, daemon=True).start()
-
-
-# ── Tab 2: Зведена ────────────────────────────────────────────────────────────
-
-class PeriodTab(_BaseTab):
-    def __init__(self, parent):
-        super().__init__(parent)
-        self.columnconfigure(1, weight=1)
-        self.rowconfigure(3, weight=1)
-
-        self._xlsx     = tk.StringVar()
-        self._out_file = tk.StringVar()
-
-        self._row(self, 0, 'XLSX файл:', self._xlsx, 'Вибрати…', self._pick_xlsx)
-        self._row(self, 1, 'Зберегти PDF як:', self._out_file, 'Зберегти…', self._pick_outfile)
-
-        self._btn = ttk.Button(self, text='Конвертувати в PDF', command=self._run)
-        self._btn.grid(row=2, column=0, columnspan=3, pady=8)
-
-        self._log_txt = self._make_log(self, 3)
-
-    def _pick_xlsx(self):
-        p = filedialog.askopenfilename(
-            title='Вибрати XLSX файл',
-            filetypes=[('Excel', '*.xlsx *.xls'), ('Всі файли', '*.*')])
-        if p:
-            self._xlsx.set(p)
-            if not self._out_file.get():
-                self._out_file.set(str(Path(p).with_suffix('.pdf')))
-
-    def _pick_outfile(self):
-        p = filedialog.asksaveasfilename(
-            title='Зберегти PDF',
-            defaultextension='.pdf',
-            filetypes=[('PDF', '*.pdf'), ('Всі файли', '*.*')])
-        if p:
-            self._out_file.set(p)
-
-    def _run(self):
-        xlsx = self._xlsx.get().strip()
-        out  = self._out_file.get().strip()
-
-        if not xlsx:
-            messagebox.showerror('Помилка', 'Вкажіть XLSX файл'); return
-        if not out:
-            messagebox.showerror('Помилка', 'Вкажіть вихідний файл'); return
-
-        self._clear_log(self._log_txt)
-        self._btn.configure(state='disabled')
-
-        def _task():
-            try:
-                convert_xlsx_to_pdf(xlsx, out,
+                compact_out = str(Path(out).parent / (Path(out).stem + '_compact.pdf'))
+                self._log(self._log_txt, '\nГенерую зведену PDF…')
+                convert_xlsx_to_pdf(xlsx, compact_out,
                                     progress_cb=lambda m: self._log(self._log_txt, m))
+
                 self._log(self._log_txt, '\nГотово!')
             except Exception as e:
                 self._log(self._log_txt, f'❌ Помилка: {e}')
@@ -231,7 +174,7 @@ class PeriodTab(_BaseTab):
         threading.Thread(target=_task, daemon=True).start()
 
 
-# ── Tab 3: Накладна ───────────────────────────────────────────────────────────
+# ── Tab 2: Накладна ───────────────────────────────────────────────────────────
 
 class ScaleTab(_BaseTab):
     def __init__(self, parent):
