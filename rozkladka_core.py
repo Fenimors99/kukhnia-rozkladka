@@ -593,7 +593,7 @@ def _ws_to_html(ws, page_size: str = 'A4 portrait',
             if row_has_rotation:
                 row_style = f' style="height:{svg_h_mm}mm"'
             else:
-                row_style = ''   # auto height; white-space:nowrap keeps rows to 1 line
+                row_style = ' class="cdr"'  # compact data row; td height capped via CSS
         elif row_has_rotation:
             row_style = f' style="height:{svg_h_mm}mm"'
         else:
@@ -619,7 +619,7 @@ def _ws_to_html(ws, page_size: str = 'A4 portrait',
                 style_parts.append(f'vertical-align:{v_align}')
 
             wrap = cell.alignment.wrap_text if cell.alignment else False
-            if not wrap or compact:
+            if not wrap:
                 style_parts.append('white-space:nowrap')
 
             b = cell.border
@@ -665,6 +665,7 @@ def _ws_to_html(ws, page_size: str = 'A4 portrait',
         'thead{display:table-header-group}'
         'td{padding:0 1pt;overflow:hidden;line-height:1.1;'
         'word-wrap:break-word;overflow-wrap:break-word}'
+        'tr.cdr td{height:5mm;max-height:5mm;overflow:hidden}'
         '</style></head><body>'
         f'<table><colgroup>{col_pcts}</colgroup><tbody>'
         + ''.join(rows_html)
