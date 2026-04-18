@@ -621,6 +621,8 @@ def _ws_to_html(ws, page_size: str = 'A4 portrait',
             wrap = cell.alignment.wrap_text if cell.alignment else False
             if not wrap:
                 style_parts.append('white-space:nowrap')
+            elif compact:
+                style_parts.append(f'font-size:{font_size_pt}pt')
 
             b = cell.border
             for prop, side in (('border-top', b.top), ('border-bottom', b.bottom),
@@ -665,7 +667,7 @@ def _ws_to_html(ws, page_size: str = 'A4 portrait',
         'thead{display:table-header-group}'
         'td{padding:0 1pt;overflow:hidden;line-height:1.1;'
         'word-wrap:break-word;overflow-wrap:break-word}'
-        'tr.cdr td{height:5mm;max-height:5mm;overflow:hidden}'
+        'tr.cdr td{height:2.5mm;max-height:2.5mm;overflow:hidden;padding-top:0;padding-bottom:0}'
         '</style></head><body>'
         f'<table><colgroup>{col_pcts}</colgroup><tbody>'
         + ''.join(rows_html)
@@ -686,7 +688,7 @@ def convert_xlsx_to_pdf(xlsx_path: str, out_path: str, progress_cb=None):
     log(f'Читаю {p.name}…')
     wb = openpyxl.load_workbook(str(p), data_only=True)
     html = _ws_to_html(wb.active, page_size='A3 landscape',
-                       font_size_pt=4, svg_h_mm=18, margin='3mm', compact=True,
+                       font_size_pt=3, svg_h_mm=12, margin='3mm', compact=True,
                        page_width_mm=414)
     log('Конвертую в PDF…')
     _html_to_pdf(html, Path(out_path))
