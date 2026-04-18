@@ -17,6 +17,15 @@ def _html_to_pdf(html: str, out_path: Path):
     _WP_HTML(string=html).write_pdf(str(out_path))
 
 
+def html_file_to_pdf(html_path: str, out_path: str, progress_cb=None):
+    def log(msg):
+        if progress_cb:
+            progress_cb(msg)
+    log(f'Читаю {Path(html_path).name}…')
+    _WP_HTML(filename=html_path).write_pdf(str(out_path))
+    log(f'✅  PDF: {Path(out_path).name}')
+
+
 DAYS_ORDER = ['Понеділок', 'Вівторок', 'Середа', 'Четвер', "П'ятниця", 'Субота', 'Неділя']
 
 
@@ -140,13 +149,14 @@ h2 { text-align: center; font-size: 8pt; font-weight: bold; margin-bottom: 2mm; 
 .doc-footer-col { flex: 1; }
 .doc-footer .hint { font-size: 5.5pt; color: #555; }
 table { border-collapse: collapse; width: 100%; table-layout: fixed; }
+thead { display: table-header-group; }
 th, td {
     border: 0.4pt solid #000; padding: 0px 2px; text-align: center;
-    vertical-align: middle; line-height: 1.1; font-size: 5.5pt;
+    vertical-align: middle; line-height: 1.1; font-size: 5pt;
 }
-td.name, th.name { text-align: left; font-size: 6pt; padding-left: 3px; }
-th.day-hdr { background: #d0d0d0; font-weight: bold; font-size: 7pt; }
-th.period-hdr { background: #a0a0a0; font-weight: bold; font-size: 7pt; }
+td.name, th.name { text-align: left; font-size: 5pt; padding-left: 3px; }
+th.day-hdr { background: #d0d0d0; font-weight: bold; font-size: 5.5pt; }
+th.period-hdr { background: #a0a0a0; font-weight: bold; font-size: 5.5pt; }
 tr.param td { background: #f0f0f0; font-style: italic; }
 tr.param td.name { font-style: italic; }
 td.period-val { background: #e0e0e0; font-weight: bold; }
@@ -159,18 +169,18 @@ tr.param:nth-child(even) td { background: #f0f0f0; }
 
 # ── SVG vertical text helper ─────────────────────────────────────────────────
 
-def _svg_vtext(text, h_mm=42, fontsize_pt=5, bold=True):
+def _svg_vtext(text, h_mm=42, fontsize_pt=5, bold=True, col_w_mm=None, fill_height=False):
     """Return SVG element with text rotated bottom-to-top, fills parent width.
-    Long text is word-wrapped into multiple lines spread across the cell width."""
+    col_w_mm: actual column width in mm; used as viewBox width for correct font scaling.
+    fill_height: if True, use height="100%" so SVG auto-fills its table cell (no forced height)."""
     h = h_mm
-    fs = round(fontsize_pt * 0.3528, 2)   # pt → mm (viewBox units)
-    lh = round(fs * 1.35, 2)              # line height
+    vb_w = col_w_mm if col_w_mm else 10
+    fs = round(fontsize_pt * 0.3528, 2)   # pt → mm
+    lh = round(fs * 1.35, 2)
     fw = 'bold' if bold else 'normal'
 
-    # Estimate max chars per line based on available height
     max_chars = max(8, int(h_mm / max(0.1, fs * 0.55)))
 
-    # Word-wrap
     words = text.split()
     lines, cur = [], ''
     for w in words:
@@ -184,9 +194,10 @@ def _svg_vtext(text, h_mm=42, fontsize_pt=5, bold=True):
         lines.append(cur)
 
     n = len(lines)
+    cx = round(vb_w / 2, 3)
     parts = []
     for i, line in enumerate(lines):
-        xi = round(5 + (i - (n - 1) / 2) * lh, 3)
+        xi = round(cx + (i - (n - 1) / 2) * lh, 3)
         t = line.replace('&', '&amp;').replace('<', '&lt;')
         parts.append(
             f'<text x="{xi}" y="{h/2}" transform="rotate(-90 {xi} {h/2})" '
@@ -195,9 +206,10 @@ def _svg_vtext(text, h_mm=42, fontsize_pt=5, bold=True):
             f'{t}</text>'
         )
 
+    height_attr = '100%' if fill_height else f'{h}mm'
     return (
-        f'<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="{h}mm" '
-        f'viewBox="0 0 10 {h}" preserveAspectRatio="xMidYMid meet">'
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="{height_attr}" '
+        f'viewBox="0 0 {vb_w} {h}" preserveAspectRatio="xMidYMid meet">'
         + ''.join(parts) +
         f'</svg>'
     )
@@ -529,8 +541,11 @@ def _border_css(side):
     return f'{w} solid #000' if w else None
 
 
-def _nakladna_ws_to_html(ws) -> str:
-    """Render openpyxl worksheet to HTML string, preserving merged cells."""
+def _ws_to_html(ws, page_size: str = 'A4 portrait',
+                font_size_pt: float = 6.5, svg_h_mm: int = 35,
+                margin: str = '8mm 6mm', compact: bool = False,
+                page_width_mm: float = None) -> str:
+    """Render any openpyxl worksheet to HTML string, preserving merged cells and borders."""
     from openpyxl.utils import get_column_letter
 
     merged_spans = {}
@@ -551,6 +566,7 @@ def _nakladna_ws_to_html(ws) -> str:
     col_pcts = ''.join(
         f'<col style="width:{w / total_w * 100:.2f}%">' for w in col_widths
     )
+    col_mm = [w / total_w * page_width_mm for w in col_widths] if page_width_mm else None
 
     def _fmt(val):
         if val is None:
@@ -559,8 +575,30 @@ def _nakladna_ws_to_html(ws) -> str:
             return f'{val:g}'
         return str(val)
 
+    PT_TO_MM = 0.353
+    DEFAULT_ROW_PT = 15.0
+
     rows_html = []
     for r in range(1, ws.max_row + 1):
+        # Only treat a row as "has rotation" if it contains a single-row rotated cell
+        # (multi-row merged rotated cells like meal-group labels should not inflate the row)
+        row_has_rotation = any(
+            (ws.cell(r, c).alignment.text_rotation if ws.cell(r, c).alignment else 0)
+            and merged_spans.get((r, c), {}).get('rowspan', 1) == 1
+            for c in range(1, ws.max_column + 1)
+            if (r, c) not in covered
+        )
+
+        if compact:
+            if row_has_rotation:
+                row_style = f' style="height:{svg_h_mm}mm"'
+            else:
+                row_style = ''   # auto height; white-space:nowrap keeps rows to 1 line
+        elif row_has_rotation:
+            row_style = f' style="height:{svg_h_mm}mm"'
+        else:
+            row_style = ''
+
         cells = []
         for c in range(1, ws.max_column + 1):
             if (r, c) in covered:
@@ -581,7 +619,7 @@ def _nakladna_ws_to_html(ws) -> str:
                 style_parts.append(f'vertical-align:{v_align}')
 
             wrap = cell.alignment.wrap_text if cell.alignment else False
-            if not wrap:
+            if not wrap or compact:
                 style_parts.append('white-space:nowrap')
 
             b = cell.border
@@ -591,9 +629,24 @@ def _nakladna_ws_to_html(ws) -> str:
                 if css:
                     style_parts.append(f'{prop}:{css}')
 
+            # Vertical text via SVG rotation (same approach as generate_daily)
+            rotation = cell.alignment.text_rotation if cell.alignment else 0
+            if rotation and val:
+                bold = bool(cell.font and cell.font.bold)
+                cw = col_mm[c - 1] if col_mm else None
+                rowspan = span_info.get('rowspan', 1)
+                # Multi-row merged cells: fill_height=True so SVG doesn't force row height
+                use_fill = compact and rowspan > 1
+                val = _svg_vtext(val, h_mm=svg_h_mm, fontsize_pt=max(3, font_size_pt - 1), bold=bold,
+                                 col_w_mm=cw, fill_height=use_fill)
+                style_parts.append('padding:0')
+
             style_attr = f' style="{";".join(style_parts)}"' if style_parts else ''
-            bold_open  = '<b>' if (cell.font and cell.font.bold) else ''
-            bold_close = '</b>' if (cell.font and cell.font.bold) else ''
+            if not rotation:
+                bold_open  = '<b>' if (cell.font and cell.font.bold) else ''
+                bold_close = '</b>' if (cell.font and cell.font.bold) else ''
+            else:
+                bold_open = bold_close = ''
 
             attrs = style_attr
             if span_info.get('rowspan', 1) > 1:
@@ -602,20 +655,41 @@ def _nakladna_ws_to_html(ws) -> str:
                 attrs += f' colspan="{span_info["colspan"]}"'
 
             cells.append(f'<td{attrs}>{bold_open}{val}{bold_close}</td>')
-        rows_html.append('<tr>' + ''.join(cells) + '</tr>')
+        rows_html.append(f'<tr{row_style}>' + ''.join(cells) + '</tr>')
 
     return (
         '<!DOCTYPE html><html lang="uk"><head><meta charset="utf-8"><style>'
-        '@page{size:A4 portrait;margin:8mm 6mm}'
-        'body{font-family:Arial,sans-serif;font-size:6.5pt}'
+        f'@page{{size:{page_size};margin:{margin}}}'
+        f'body{{font-family:Arial,sans-serif;font-size:{font_size_pt}pt}}'
         'table{border-collapse:collapse;width:100%;table-layout:fixed}'
-        'td{padding:1pt 2pt;overflow:hidden;'
+        'thead{display:table-header-group}'
+        'td{padding:0 1pt;overflow:hidden;line-height:1.1;'
         'word-wrap:break-word;overflow-wrap:break-word}'
         '</style></head><body>'
         f'<table><colgroup>{col_pcts}</colgroup><tbody>'
         + ''.join(rows_html)
         + '</tbody></table></body></html>'
     )
+
+
+def _nakladna_ws_to_html(ws) -> str:
+    return _ws_to_html(ws, page_size='A4 portrait')
+
+
+def convert_xlsx_to_pdf(xlsx_path: str, out_path: str, progress_cb=None):
+    """Convert any xlsx worksheet directly to PDF, preserving all formatting."""
+    def log(msg):
+        if progress_cb:
+            progress_cb(msg)
+    p = Path(xlsx_path)
+    log(f'Читаю {p.name}…')
+    wb = openpyxl.load_workbook(str(p), data_only=True)
+    html = _ws_to_html(wb.active, page_size='A3 landscape',
+                       font_size_pt=4, svg_h_mm=18, margin='3mm', compact=True,
+                       page_width_mm=414)
+    log('Конвертую в PDF…')
+    _html_to_pdf(html, Path(out_path))
+    log(f'✅  PDF: {Path(out_path).name}')
 
 
 def _amount_to_words(total_sum):

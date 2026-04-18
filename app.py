@@ -11,7 +11,7 @@ from pathlib import Path
 from rozkladka_core import (
     detect_dates_from_filename,
     generate_daily,
-    generate_period,
+    convert_xlsx_to_pdf,
     scale_nakladna,
 )
 
@@ -176,30 +176,18 @@ class PeriodTab(_BaseTab):
     def __init__(self, parent):
         super().__init__(parent)
         self.columnconfigure(1, weight=1)
-        self.rowconfigure(5, weight=1)
+        self.rowconfigure(3, weight=1)
 
         self._xlsx     = tk.StringVar()
         self._out_file = tk.StringVar()
-        self._unit     = tk.StringVar(value='Т0920')
-        self._date     = tk.StringVar()
 
         self._row(self, 0, 'XLSX файл:', self._xlsx, 'Вибрати…', self._pick_xlsx)
         self._row(self, 1, 'Зберегти PDF як:', self._out_file, 'Зберегти…', self._pick_outfile)
 
-        ttk.Label(self, text='Підрозділ:', font=_FONT).grid(row=2, column=0, sticky='e', **_PAD)
-        ttk.Entry(self, textvariable=self._unit, width=20, font=_FONT).grid(
-            row=2, column=1, sticky='w', **_PAD)
+        self._btn = ttk.Button(self, text='Конвертувати в PDF', command=self._run)
+        self._btn.grid(row=2, column=0, columnspan=3, pady=8)
 
-        ttk.Label(self, text='Дата початку тижня:', font=_FONT).grid(row=3, column=0, sticky='e', **_PAD)
-        df = ttk.Frame(self)
-        df.grid(row=3, column=1, sticky='w', **_PAD)
-        ttk.Entry(df, textvariable=self._date, width=14, font=_FONT).pack(side='left')
-        ttk.Label(df, text='ДД.ММ.РРРР', font=_FONT_SMALL, foreground='gray').pack(side='left', padx=6)
-
-        self._btn = ttk.Button(self, text='Згенерувати PDF', command=self._run)
-        self._btn.grid(row=4, column=0, columnspan=3, pady=8)
-
-        self._log_txt = self._make_log(self, 5)
+        self._log_txt = self._make_log(self, 3)
 
     def _pick_xlsx(self):
         p = filedialog.askopenfilename(
@@ -207,19 +195,13 @@ class PeriodTab(_BaseTab):
             filetypes=[('Excel', '*.xlsx *.xls'), ('Всі файли', '*.*')])
         if p:
             self._xlsx.set(p)
-            self._autofill_date(self._xlsx, self._date)
             if not self._out_file.get():
-                date = self._date.get() or 'rozkladka'
-                stem = f'rozkladka_period_{date.replace(".", "-")}'
-                self._out_file.set(str(Path(p).parent / f'{stem}.pdf'))
+                self._out_file.set(str(Path(p).with_suffix('.pdf')))
 
     def _pick_outfile(self):
-        date = self._date.get() or 'rozkladka'
-        stem = f'rozkladka_period_{date.replace(".", "-")}'
         p = filedialog.asksaveasfilename(
             title='Зберегти PDF',
             defaultextension='.pdf',
-            initialfile=f'{stem}.pdf',
             filetypes=[('PDF', '*.pdf'), ('Всі файли', '*.*')])
         if p:
             self._out_file.set(p)
@@ -227,23 +209,19 @@ class PeriodTab(_BaseTab):
     def _run(self):
         xlsx = self._xlsx.get().strip()
         out  = self._out_file.get().strip()
-        unit = self._unit.get().strip() or 'Т0920'
-        date = self._date.get().strip()
 
         if not xlsx:
             messagebox.showerror('Помилка', 'Вкажіть XLSX файл'); return
         if not out:
             messagebox.showerror('Помилка', 'Вкажіть вихідний файл'); return
-        if not date:
-            messagebox.showerror('Помилка', 'Вкажіть дату початку тижня (ДД.ММ.РРРР)'); return
 
         self._clear_log(self._log_txt)
         self._btn.configure(state='disabled')
 
         def _task():
             try:
-                generate_period(xlsx, out, unit, date,
-                                progress_cb=lambda m: self._log(self._log_txt, m))
+                convert_xlsx_to_pdf(xlsx, out,
+                                    progress_cb=lambda m: self._log(self._log_txt, m))
                 self._log(self._log_txt, '\nГотово!')
             except Exception as e:
                 self._log(self._log_txt, f'❌ Помилка: {e}')
