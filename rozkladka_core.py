@@ -232,7 +232,7 @@ def generate_daily(xlsx_path: str, out_path: str, unit: str, start_date_str: str
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
     wb = openpyxl.load_workbook(str(xlsx_path), data_only=True)
-    ws = wb['Аркуш1']
+    ws = wb.active
     raw = list(ws.iter_rows(values_only=True))
 
     ing_start, ing_end, total_col, meat_col = detect_column_range(raw)
@@ -401,7 +401,7 @@ def generate_period(xlsx_path: str, out_path: str, unit: str, start_date_str: st
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
     wb = openpyxl.load_workbook(str(xlsx_path), data_only=True)
-    ws = wb['Аркуш1']
+    ws = wb.active
     raw = list(ws.iter_rows(values_only=True))
 
     ing_start, ing_end, total_col, meat_col = detect_column_range(raw)
