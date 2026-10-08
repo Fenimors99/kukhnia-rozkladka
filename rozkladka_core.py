@@ -76,28 +76,45 @@ def date_range_label(start_date_str: str) -> str:
 
 def detect_column_range(raw: list) -> tuple:
     """
-    Auto-detect ingredient column range from raw xlsx data.
-    Returns (ing_start, ing_end, total_col, meat_col).
+    Auto-detect column layout from raw xlsx data.
+    Returns (ing_start, ing_end, total_col, meat_col, dish_col, pct_col).
     ing_start..ing_end is exclusive: range(ing_start, ing_end).
+
+    Positions come from the header row text, so both layouts work: without the
+    "Група" column (dish=2, pct=3, ing=4…) and with it (dish=3, pct=4, ing=5…).
     """
     total_col = None
     meat_col = None
+    dish_col = None
+    pct_col = None
+    ing_start = None
 
     # Scan header rows 0-13 for keyword hints
     for row_idx in range(min(14, len(raw))):
         for col_idx, cell in enumerate(raw[row_idx]):
             if not cell:
                 continue
-            s = str(cell).strip().lower()
+            s = str(cell).strip().lower().replace('’', "'")
+            if dish_col is None and 'найменування страв' in s:
+                dish_col = col_idx
+            if pct_col is None and 'страви за типом' in s:
+                pct_col = col_idx
+            if ing_start is None and 'найменування продуктів' in s:
+                ing_start = col_idx
             if total_col is None and 'загальна маса готової' in s:
                 total_col = col_idx
             if meat_col is None and "м'ясних та рибних" in s:
                 meat_col = col_idx
-        if total_col is not None and meat_col is not None:
-            break
+
+    if dish_col is None:
+        dish_col = 2
+    if pct_col is None:
+        pct_col = dish_col + 1
+    if ing_start is None:
+        ing_start = pct_col + 1
 
     if total_col is not None and meat_col is not None:
-        return 4, total_col, total_col, meat_col
+        return ing_start, total_col, total_col, meat_col, dish_col, pct_col
 
     # Fallback: scan first "Усього за день" row — last 2 non-None cols are meat/total
     for row in raw[12:]:
@@ -105,11 +122,11 @@ def detect_column_range(raw: list) -> tuple:
             continue
         col1 = str(row[1]).strip() if row[1] else ''
         if col1 == 'Усього за день':
-            filled = [i for i in range(4, len(row)) if row[i] is not None]
+            filled = [i for i in range(ing_start, len(row)) if row[i] is not None]
             if len(filled) >= 2:
-                return 4, filled[-2], filled[-2], filled[-1]
+                return ing_start, filled[-2], filled[-2], filled[-1], dish_col, pct_col
 
-    return 4, 80, 80, 81  # hard fallback
+    return ing_start, 80, 80, 81, dish_col, pct_col  # hard fallback
 
 
 # ── CSS ───────────────────────────────────────────────────────────────────────
@@ -235,7 +252,7 @@ def generate_daily(xlsx_path: str, out_path: str, unit: str, start_date_str: str
     ws = wb.active
     raw = list(ws.iter_rows(values_only=True))
 
-    ing_start, ing_end, total_col, meat_col = detect_column_range(raw)
+    ing_start, ing_end, total_col, meat_col, dish_col, pct_col = detect_column_range(raw)
     N_ING = ing_end - ing_start
     ING_NAMES = [
         str(raw[11][i]).strip() if i < len(raw[11]) and raw[11][i] else ''
@@ -252,7 +269,7 @@ def generate_daily(xlsx_path: str, out_path: str, unit: str, start_date_str: str
     for row in raw[12:]:
         col0 = str(row[0]).strip() if row[0] else ''
         col1 = str(row[1]).strip() if row[1] else ''
-        col2 = str(row[2]).strip() if row[2] else ''
+        dish = str(row[dish_col]).strip() if dish_col < len(row) and row[dish_col] else ''
 
         if col0:
             for d in DAYS_ORDER:
@@ -277,13 +294,13 @@ def generate_daily(xlsx_path: str, out_path: str, unit: str, start_date_str: str
             })
             continue
 
-        if not col2:
+        if not dish:
             continue
 
         days[cur_day].append({
             'meal':  cur_meal or '',
-            'dish':  col2,
-            'pct':   str(row[3]).strip() if row[3] else '',
+            'dish':  dish,
+            'pct':   str(row[pct_col]).strip() if pct_col < len(row) and row[pct_col] else '',
             'total': tot, 'meat': meat, 'ings': ings,
         })
 
@@ -404,7 +421,7 @@ def generate_period(xlsx_path: str, out_path: str, unit: str, start_date_str: st
     ws = wb.active
     raw = list(ws.iter_rows(values_only=True))
 
-    ing_start, ing_end, total_col, meat_col = detect_column_range(raw)
+    ing_start, ing_end, total_col, meat_col, _dish_col, _pct_col = detect_column_range(raw)
     N_ING = ing_end - ing_start
     ING_NAMES = [
         str(raw[11][i]).strip() if i < len(raw[11]) and raw[11][i] else ''
@@ -544,7 +561,7 @@ def _border_css(side):
 def _ws_to_html(ws, page_size: str = 'A4 portrait',
                 font_size_pt: float = 6.5, svg_h_mm: int = 35,
                 margin: str = '8mm 6mm', compact: bool = False,
-                page_width_mm: float = None) -> str:
+                page_width_mm: float = None, row_h_mm: float = 2.5) -> str:
     """Render any openpyxl worksheet to HTML string, preserving merged cells and borders."""
     from openpyxl.utils import get_column_letter
 
@@ -578,16 +595,23 @@ def _ws_to_html(ws, page_size: str = 'A4 portrait',
     PT_TO_MM = 0.353
     DEFAULT_ROW_PT = 15.0
 
-    rows_html = []
-    for r in range(1, ws.max_row + 1):
-        # Only treat a row as "has rotation" if it contains a single-row rotated cell
-        # (multi-row merged rotated cells like meal-group labels should not inflate the row)
-        row_has_rotation = any(
+    # Only treat a row as "has rotation" if it contains a single-row rotated cell
+    # (multi-row merged rotated cells like meal-group labels should not inflate the row)
+    rotated_rows = {
+        r: any(
             (ws.cell(r, c).alignment.text_rotation if ws.cell(r, c).alignment else 0)
             and merged_spans.get((r, c), {}).get('rowspan', 1) == 1
             for c in range(1, ws.max_column + 1)
             if (r, c) not in covered
         )
+        for r in range(1, ws.max_row + 1)
+    }
+    # Rendered height of each row in mm — a merged cell's height is the sum of these
+    row_h_of = {r: (svg_h_mm if rot else row_h_mm) for r, rot in rotated_rows.items()}
+
+    rows_html = []
+    for r in range(1, ws.max_row + 1):
+        row_has_rotation = rotated_rows[r]
 
         if compact:
             if row_has_rotation:
@@ -637,9 +661,20 @@ def _ws_to_html(ws, page_size: str = 'A4 portrait',
                 bold = bool(cell.font and cell.font.bold)
                 cw = col_mm[c - 1] if col_mm else None
                 rowspan = span_info.get('rowspan', 1)
-                # Multi-row merged cells: fill_height=True so SVG doesn't force row height
+                # Multi-row merged cells: fill_height=True so SVG doesn't force row height.
                 use_fill = compact and rowspan > 1
-                val = _svg_vtext(val, h_mm=svg_h_mm, fontsize_pt=max(3, font_size_pt - 1), bold=bold,
+                spans_data_rows = use_fill and not any(
+                    rotated_rows.get(rr) for rr in range(r, r + rowspan))
+                if spans_data_rows:
+                    # Meal-group label: its viewBox must match the real cell height
+                    # (spanned rows), else a fixed svg_h_mm overflows and the label
+                    # gets clipped. 0.9 leaves room for cell borders — at exactly the
+                    # cell height the box rounds past it and eats the first glyph.
+                    cell_h_mm = 0.9 * sum(row_h_of.get(rr, row_h_mm)
+                                          for rr in range(r, r + rowspan))
+                else:
+                    cell_h_mm = svg_h_mm
+                val = _svg_vtext(val, h_mm=cell_h_mm, fontsize_pt=max(3, font_size_pt - 1), bold=bold,
                                  col_w_mm=cw, fill_height=use_fill)
                 style_parts.append('padding:0')
 
@@ -667,7 +702,8 @@ def _ws_to_html(ws, page_size: str = 'A4 portrait',
         'thead{display:table-header-group}'
         'td{padding:0 1pt;overflow:hidden;line-height:1.1;'
         'word-wrap:break-word;overflow-wrap:break-word}'
-        'tr.cdr td{height:2.5mm;max-height:2.5mm;overflow:hidden;padding-top:0;padding-bottom:0}'
+        f'tr.cdr td{{height:{row_h_mm}mm;max-height:{row_h_mm}mm;overflow:hidden;'
+        'padding-top:0;padding-bottom:0}'
         '</style></head><body>'
         f'<table><colgroup>{col_pcts}</colgroup><tbody>'
         + ''.join(rows_html)
@@ -679,20 +715,55 @@ def _nakladna_ws_to_html(ws) -> str:
     return _ws_to_html(ws, page_size='A4 portrait')
 
 
-def convert_xlsx_to_pdf(xlsx_path: str, out_path: str, progress_cb=None):
-    """Convert any xlsx worksheet directly to PDF, preserving all formatting."""
+ROW_H_MAX_MM = 2.5   # roomiest compact data row
+ROW_H_MIN_MM = 1.0   # below this 3pt text starts to clip
+
+
+def convert_xlsx_to_pdf(xlsx_path: str, out_path: str, progress_cb=None,
+                        fit_one_page: bool = True):
+    """
+    Convert any xlsx worksheet directly to PDF, preserving all formatting.
+
+    fit_one_page: shrink data-row height until the sheet fits a single A3 page.
+    Binary search over 0.1mm steps for the tallest row height that still fits —
+    page count only grows as rows get taller, so the search is monotonic.
+    """
     def log(msg):
         if progress_cb:
             progress_cb(msg)
     p = Path(xlsx_path)
     log(f'Читаю {p.name}…')
     wb = openpyxl.load_workbook(str(p), data_only=True)
-    html = _ws_to_html(wb.active, page_size='A3 landscape',
-                       font_size_pt=3, svg_h_mm=12, margin='3mm', compact=True,
-                       page_width_mm=414)
+    ws = wb.active
+
+    def render(row_h):
+        html = _ws_to_html(ws, page_size='A3 landscape',
+                           font_size_pt=3, svg_h_mm=12, margin='3mm', compact=True,
+                           page_width_mm=414, row_h_mm=row_h)
+        return _WP_HTML(string=html).render()
+
     log('Конвертую в PDF…')
-    _html_to_pdf(html, Path(out_path))
-    log(f'✅  PDF: {Path(out_path).name}')
+    doc = render(ROW_H_MAX_MM)
+
+    if fit_one_page and len(doc.pages) > 1:
+        log(f'Не влазить в 1 сторінку ({len(doc.pages)}), підбираю висоту рядка…')
+        lo, hi = int(ROW_H_MIN_MM * 10), int(ROW_H_MAX_MM * 10)
+        best = None
+        while lo <= hi:
+            mid = (lo + hi) // 2
+            d = render(mid / 10)
+            if len(d.pages) <= 1:
+                best, lo = (mid / 10, d), mid + 1
+            else:
+                hi = mid - 1
+        if best:
+            row_h, doc = best
+            log(f'Висота рядка: {row_h}мм → 1 сторінка')
+        else:
+            log(f'⚠️  Не влазить навіть при {ROW_H_MIN_MM}мм, лишаю {len(doc.pages)} стор.')
+
+    doc.write_pdf(str(out_path))
+    log(f'✅  PDF: {Path(out_path).name} ({len(doc.pages)} стор.)')
 
 
 def _amount_to_words(total_sum):
