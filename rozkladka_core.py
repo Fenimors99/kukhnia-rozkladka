@@ -77,12 +77,14 @@ def date_range_label(start_date_str: str) -> str:
 def detect_column_range(raw: list) -> tuple:
     """
     Auto-detect column layout from raw xlsx data.
-    Returns (ing_start, ing_end, total_col, meat_col, dish_col, pct_col).
+    Returns (ing_start, ing_end, total_col, meat_col, dish_col, pct_col, meal_col).
     ing_start..ing_end is exclusive: range(ing_start, ing_end).
 
-    Positions come from the header row text, so both layouts work: without the
-    "Група" column (dish=2, pct=3, ing=4…) and with it (dish=3, pct=4, ing=5…).
+    Positions come from the header row text, so all layouts work: the old one
+    (meal=1, dish=2), with "Група" (meal=1, dish=3) and with "Кошторис за день"
+    (meal=2, dish=4). "Усього за день" sits in the meal column.
     """
+    meal_col = None
     total_col = None
     meat_col = None
     dish_col = None
@@ -90,11 +92,13 @@ def detect_column_range(raw: list) -> tuple:
     ing_start = None
 
     # Scan header rows 0-13 for keyword hints
-    for row_idx in range(min(14, len(raw))):
+    for row_idx in range(min(20, len(raw))):
         for col_idx, cell in enumerate(raw[row_idx]):
             if not cell:
                 continue
             s = str(cell).strip().lower().replace('’', "'")
+            if meal_col is None and 'приймання їжі' in s:
+                meal_col = col_idx
             if dish_col is None and 'найменування страв' in s:
                 dish_col = col_idx
             if pct_col is None and 'страви за типом' in s:
@@ -106,6 +110,8 @@ def detect_column_range(raw: list) -> tuple:
             if meat_col is None and "м'ясних та рибних" in s:
                 meat_col = col_idx
 
+    if meal_col is None:
+        meal_col = 1
     if dish_col is None:
         dish_col = 2
     if pct_col is None:
@@ -114,19 +120,41 @@ def detect_column_range(raw: list) -> tuple:
         ing_start = pct_col + 1
 
     if total_col is not None and meat_col is not None:
-        return ing_start, total_col, total_col, meat_col, dish_col, pct_col
+        return ing_start, total_col, total_col, meat_col, dish_col, pct_col, meal_col
 
     # Fallback: scan first "Усього за день" row — last 2 non-None cols are meat/total
     for row in raw[12:]:
         if len(row) < 2:
             continue
-        col1 = str(row[1]).strip() if row[1] else ''
-        if col1 == 'Усього за день':
+        meal = str(row[meal_col]).strip() if meal_col < len(row) and row[meal_col] else ''
+        if meal == 'Усього за день':
             filled = [i for i in range(ing_start, len(row)) if row[i] is not None]
             if len(filled) >= 2:
-                return ing_start, filled[-2], filled[-2], filled[-1], dish_col, pct_col
+                return ing_start, filled[-2], filled[-2], filled[-1], dish_col, pct_col, meal_col
 
-    return ing_start, 80, 80, 81, dish_col, pct_col  # hard fallback
+    return ing_start, 80, 80, 81, dish_col, pct_col, meal_col  # hard fallback
+
+
+def detect_name_row(raw: list, ing_start: int, ing_end: int) -> int:
+    """
+    Index of the row holding ingredient names.
+
+    Newer files put extra rows above the names (product codes, prices), so the
+    names row is the one between the header and the first day row whose
+    ingredient cells are mostly text rather than numbers.
+    """
+    def is_num(v):
+        return re.fullmatch(r'-?[\d\s]+([.,]\d+)?', str(v).strip()) is not None
+
+    first_day = next((i for i, r in enumerate(raw)
+                      if r and r[0] and str(r[0]).strip().startswith(tuple(DAYS_ORDER))), len(raw))
+    best, best_cnt = 11, -1
+    for i in range(min(first_day, len(raw))):
+        cells = [raw[i][c] for c in range(ing_start, min(ing_end, len(raw[i])))]
+        cnt = sum(1 for v in cells if v not in (None, '') and not is_num(v))
+        if cnt > best_cnt:
+            best, best_cnt = i, cnt
+    return best
 
 
 # ── CSS ───────────────────────────────────────────────────────────────────────
@@ -140,7 +168,7 @@ table { border-collapse: collapse; width: 100%; table-layout: fixed; }
 th, td { border: 0.4pt solid #000; padding: 1px 1px; text-align: center;
          vertical-align: middle; line-height: 1.2; font-size: 6pt; }
 td.c-name { text-align: left; font-size: 8pt; padding-left: 3px; }
-th.v-hdr { height: 42mm; padding: 0; overflow: hidden; }
+th.v-hdr { height: 55mm; padding: 0; overflow: hidden; }
 th.ing-main-hdr { font-size: 6pt; font-weight: bold; padding: 2px; }
 td.meal-cell { background: #e0e0e0; padding: 0; }
 tr.total td { background: #e8e8e8; font-weight: bold; }
@@ -182,6 +210,10 @@ tr:nth-child(even) td.name { background: #fafafa; }
 tr.param:nth-child(even) td { background: #f0f0f0; }
 @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
 """
+
+
+HDR_H_MM = 55       # daily-sheet column title height (matches th.v-hdr)
+HDR_FONT_PT = 7     # daily-sheet column title font
 
 
 # ── SVG vertical text helper ─────────────────────────────────────────────────
@@ -252,10 +284,11 @@ def generate_daily(xlsx_path: str, out_path: str, unit: str, start_date_str: str
     ws = wb.active
     raw = list(ws.iter_rows(values_only=True))
 
-    ing_start, ing_end, total_col, meat_col, dish_col, pct_col = detect_column_range(raw)
+    ing_start, ing_end, total_col, meat_col, dish_col, pct_col, meal_col = detect_column_range(raw)
     N_ING = ing_end - ing_start
+    name_row = detect_name_row(raw, ing_start, ing_end)
     ING_NAMES = [
-        str(raw[11][i]).strip() if i < len(raw[11]) and raw[11][i] else ''
+        str(raw[name_row][i]).strip() if i < len(raw[name_row]) and raw[name_row][i] else ''
         for i in range(ing_start, ing_end)
     ]
 
@@ -266,9 +299,9 @@ def generate_daily(xlsx_path: str, out_path: str, unit: str, start_date_str: str
     cur_day = None
     cur_meal = None
 
-    for row in raw[12:]:
+    for row in raw[name_row + 1:]:
         col0 = str(row[0]).strip() if row[0] else ''
-        col1 = str(row[1]).strip() if row[1] else ''
+        col1 = str(row[meal_col]).strip() if meal_col < len(row) and row[meal_col] else ''
         dish = str(row[dish_col]).strip() if dish_col < len(row) and row[dish_col] else ''
 
         if col0:
@@ -338,16 +371,20 @@ def generate_daily(xlsx_path: str, out_path: str, unit: str, start_date_str: str
             L.append(f'<col style="width:{ing_w}mm">')
         L += ['<col style="width:11mm">', '<col style="width:11mm">', '</colgroup>']
 
+        # Column titles: viewBox matches the real column width so text isn't scaled down
+        def hdr(text, w):
+            return _svg_vtext(text, h_mm=HDR_H_MM, fontsize_pt=HDR_FONT_PT, col_w_mm=w)
+
         L += ['<thead><tr>',
-              f'<th class="v-hdr" rowspan="2">{_svg_vtext("Прийняття їжі")}</th>',
-              f'<th class="v-hdr" rowspan="2">{_svg_vtext("Найменування страв")}</th>',
-              f'<th class="v-hdr" rowspan="2">{_svg_vtext("% страви за типом")}</th>',
+              f'<th class="v-hdr" rowspan="2">{hdr("Прийняття їжі", 8)}</th>',
+              f'<th class="v-hdr" rowspan="2">{hdr("Найменування страв", name_w)}</th>',
+              f'<th class="v-hdr" rowspan="2">{hdr("% страви за типом", 6)}</th>',
               f'<th class="ing-main-hdr" colspan="{len(used_idx)}">Найменування продуктів та маса їх в грамах на одну особу</th>',
-              f'<th class="v-hdr" rowspan="2">{_svg_vtext("Загальна маса готової страви, г")}</th>',
-              '<th class="v-hdr" rowspan="2">' + _svg_vtext("Маса м'ясних та рибних порцій, г") + '</th>',
+              f'<th class="v-hdr" rowspan="2">{hdr("Загальна маса готової страви, г", 11)}</th>',
+              '<th class="v-hdr" rowspan="2">' + hdr("Маса м'ясних та рибних порцій, г", 11) + '</th>',
               '</tr><tr>']
         for i in used_idx:
-            L.append(f'<th class="v-hdr">{_svg_vtext(ING_NAMES[i])}</th>')
+            L.append(f'<th class="v-hdr">{hdr(ING_NAMES[i], ing_w)}</th>')
         L.append('</tr></thead><tbody>')
 
         for meal, dishes in meal_groups:
@@ -421,10 +458,11 @@ def generate_period(xlsx_path: str, out_path: str, unit: str, start_date_str: st
     ws = wb.active
     raw = list(ws.iter_rows(values_only=True))
 
-    ing_start, ing_end, total_col, meat_col, _dish_col, _pct_col = detect_column_range(raw)
+    ing_start, ing_end, total_col, meat_col, _dish_col, _pct_col, meal_col = detect_column_range(raw)
     N_ING = ing_end - ing_start
+    name_row = detect_name_row(raw, ing_start, ing_end)
     ING_NAMES = [
-        str(raw[11][i]).strip() if i < len(raw[11]) and raw[11][i] else ''
+        str(raw[name_row][i]).strip() if i < len(raw[name_row]) and raw[name_row][i] else ''
         for i in range(ing_start, ing_end)
     ]
 
@@ -434,7 +472,7 @@ def generate_period(xlsx_path: str, out_path: str, unit: str, start_date_str: st
 
     day_totals = []
     for row in raw:
-        col1 = str(row[1]).strip() if len(row) > 1 and row[1] else ''
+        col1 = str(row[meal_col]).strip() if len(row) > meal_col and row[meal_col] else ''
         if col1 == 'Усього за день':
             day_totals.append({
                 'ings':  [fmt(row[i]) if i < len(row) else '' for i in range(ing_start, ing_end)],
